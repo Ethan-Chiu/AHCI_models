@@ -3,6 +3,7 @@ An example for dataset loaders, starting with data loading including all the fun
 """
 import imageio
 import torch
+from torch.utils import data
 import torchvision.utils as v_utils
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import PIL
@@ -12,9 +13,9 @@ import scipy.io as sio
 import numpy as np
 import torchvision.transforms as transforms 
 
-class HimptDataset(data.Dataset):
+class HimpDataset(data.Dataset):
     def __init__(self, mode, data_root, transform=None):
-        self.data = None # read from file, a list of paths
+        self.data = []# read from file, a list of paths
         if len(self.data) == 0:
             raise RuntimeError('Found 0 images, please check the data set')
         self.mode = mode
@@ -23,17 +24,11 @@ class HimptDataset(data.Dataset):
         self.transform = transform
 
     def __getitem__(self, index):
-        if self.mode == 'test':
-            img_file, img_name = self.data[index]
-            img_path = os.path.join(self.data_root, img_file)
-            img = Image.open(img_path).convert('RGB')
-            if self.transform is not None:
-                img = self.transform(img)
-            return img, img_name
-
         img_file, x, y = self.data[index]
         img_path = os.path.join(self.data_root, img_file)
         img = Image.open(img_path).convert('RGB')
+        if self.transform is not None:
+            img = self.transform(img)
 
         # Data augmentation
         # if self.sliding_crop is not None:
@@ -44,12 +39,13 @@ class HimptDataset(data.Dataset):
         #         mask_slices = [self.target_transform(e) for e in mask_slices]
         #     img, mask = torch.stack(img_slices, 0), torch.stack(mask_slices, 0)
         #     return img, mask, torch.LongTensor(slices_info)
+        return img, (x, y)
 
     def __len__(self):
         return len(self.data)
 
 
-class HmiptDataLoader:
+class HmipDataLoader:
     def __init__(self, config):
         self.config = config
         assert self.config.mode in ['train', 'test', 'random']
