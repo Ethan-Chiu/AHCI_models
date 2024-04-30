@@ -1,0 +1,28 @@
+{
+  "exp_name": "hmipt_exp_0",
+  "agent": "HimpTAgent",
+  "mode": "train",
+
+  "cuda": true,
+  "gpu_device": 0,
+  "seed": 1337,
+
+  "batch_size": 1,
+
+  "learning_rate": 0.0002,
+  "momentum": 0.1,
+
+  "max_epoch": 20,
+  "validate_every": 2,
+  "log_interval": 1,
+
+  "checkpoint_file": "checkpoint.pth.tar",
+
+  "data_loader_workers": 2,
+  "pin_memory": false,
+
+  "data_root": "./data/hmip/images/",
+  "data_csv": "./data/hmip/data.csv",
+
+  "num_filters": 5
+}

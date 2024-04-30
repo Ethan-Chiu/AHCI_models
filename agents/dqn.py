@@ -5,7 +5,7 @@ import math
 import random
 import shutil
 
-import gym
+# import gym
 import torch
 from tensorboardX import SummaryWriter
 from torch.backends import cudnn
@@ -36,7 +36,7 @@ class DQNAgent(BaseAgent):
         self.optim = torch.optim.RMSprop(self.policy_model.parameters())
 
         # define environment
-        self.env = gym.make('CartPole-v0').unwrapped
+        self.env = None # gym.make('CartPole-v0').unwrapped
         self.cartpole = CartPoleEnv(self.config.screen_width)
 
         # initialize counter

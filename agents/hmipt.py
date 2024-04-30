@@ -1,8 +1,9 @@
-import numpy as np
-
-from tqdm import tqdm
-import shutil
+import os
 import random
+import shutil
+
+import numpy as np
+from tqdm import tqdm
 
 import torch
 from torch import nn
@@ -14,8 +15,8 @@ import torch.nn.functional as F
 from agents.base import BaseAgent
 
 # import your classes here
-from graphs.models.hmipt import HimpT
-from datasets.hmipt import HimpDataLoader
+from graphs.models.hmipt import HmipT
+from datasets.hmip import HmipDataLoader
 
 from tensorboardX import SummaryWriter
 from utils.metrics import AverageMeter, AverageMeterList
@@ -30,10 +31,10 @@ class HimpTAgent(BaseAgent):
         super().__init__(config)
 
         # define models
-        self.model = HimpT() 
+        self.model = HmipT(config=config) 
 
         # define data_loader
-        self.data_loader = HimpDataLoader(config=config) 
+        self.data_loader = HmipDataLoader(config=config) 
 
         # define loss
         self.loss = nn.MSELoss() 
@@ -58,6 +59,7 @@ class HimpTAgent(BaseAgent):
         self.manual_seed = self.config.seed
         if self.cuda:
             torch.cuda.manual_seed_all(self.manual_seed)
+            self.device = torch.device("cuda")
             torch.cuda.set_device(self.config.gpu_device)
             self.model = self.model.cuda()
             self.loss = self.loss.cuda()
@@ -79,7 +81,25 @@ class HimpTAgent(BaseAgent):
         :param file_name: name of the checkpoint file
         :return:
         """
-        pass
+        if file_name is None:
+            return
+        
+        try:
+            filepath = os.path.join(self.config.checkpoint_dir, file_name)
+
+            self.logger.info("Loading checkpoint '{}'".format(filepath))
+            checkpoint = torch.load(filepath)
+
+            self.current_epoch = checkpoint['epoch']
+            self.current_iteration = checkpoint['iteration']
+            self.model.load_state_dict(checkpoint['state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
+
+            self.logger.info("Checkpoint loaded successfully from '{}' at (epoch {}) at (iteration {})\n"
+                             .format(self.config.checkpoint_dir, checkpoint['epoch'], checkpoint['iteration']))
+        except OSError as e:
+            self.logger.info("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
+            self.logger.info("**First time to train**")
 
     def save_checkpoint(self, file_name="checkpoint.pth.tar", is_best=0):
         """
@@ -88,7 +108,24 @@ class HimpTAgent(BaseAgent):
         :param is_best: boolean flag to indicate whether current checkpoint's accuracy is the best so far
         :return:
         """
-        pass
+        # Save model checkpoint
+        state = {
+            'epoch': self.current_epoch + 1,
+            'iteration': self.current_iteration,
+            'state_dict': self.model.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+        }
+        
+        # Save the state
+        save_path = os.path.join(self.config.checkpoint_dir, file_name)
+        self.logger.info(f"Saving checkpoint to {save_path}")
+
+        torch.save(state, save_path)
+
+        # If it is the best copy it to another file 'model_best.pth.tar'
+        if is_best:
+            best_save_path = os.path.join(self.config.checkpoint_dir, 'model_best.pth.tar')
+            shutil.copyfile(save_path, best_save_path)
 
     def run(self):
         """
@@ -106,12 +143,17 @@ class HimpTAgent(BaseAgent):
         Main training loop
         :return:
         """
-        for epoch in range(1, self.config.max_epoch + 1):
+        for epoch in range(self.current_epoch, self.config.max_epoch + 1):
+            self.current_epoch = epoch
             print(f"Epoch {epoch}/{self.config.max_epoch}")
             self.train_one_epoch()
-            self.validate()
-            
-            self.current_epoch += 1
+            loss = self.validate()
+
+            is_best = loss < self.best_metric
+            if is_best:
+                self.best_metric = loss
+
+            self.save_checkpoint(f"checkpoint_{epoch}.pth.tar", is_best=is_best)
 
     def train_one_epoch(self):
         """
@@ -120,6 +162,8 @@ class HimpTAgent(BaseAgent):
         """
         self.model.train()
         for batch_idx, (data, target) in enumerate(self.data_loader.train_loader):
+            # print("data", data)
+            # print("target", target)
             data, target = data.to(self.device), target.to(self.device)
             self.optimizer.zero_grad()
             output = self.model(data)
@@ -139,20 +183,21 @@ class HimpTAgent(BaseAgent):
         :return:
         """
         self.model.eval()
-        test_loss = 0
+        val_loss = 0
         # correct = 0
         with torch.no_grad():
-            for data, target in self.data_loader.test_loader:
+            for data, target in self.data_loader.valid_loader:
                 data, target = data.to(self.device), target.to(self.device)
                 output = self.model(data)
-                test_loss += self.loss(output, target, size_average=False).item()  # sum up batch loss
+                val_loss += self.loss(output, target).item()  # sum up batch loss
                 # pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
                 # correct += pred.eq(target.view_as(pred)).sum().item()
 
-        test_loss /= len(self.data_loader.test_loader.dataset)
-        self.logger.info('\nTest set: Average loss: {:.4f})\n'.format(
-            test_loss
+        val_loss /= len(self.data_loader.valid_loader.dataset)
+        self.logger.info('Val set: Average loss: {:.4f})\n'.format(
+            val_loss
         )) 
+        return val_loss
 
     def finalize(self):
         """
@@ -160,6 +205,6 @@ class HimpTAgent(BaseAgent):
         :return:
         """
         self.logger.info("Please wait while finalizing the operation.. Thank you")
-        # self.save_checkpoint()
+        self.save_checkpoint("checkpoint_fianl.pth.tar")
         # self.summary_writer.export_scalars_to_json("{}all_scalars.json".format(self.config.summary_dir))
         # self.summary_writer.close()

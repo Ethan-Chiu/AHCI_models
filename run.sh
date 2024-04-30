@@ -9,4 +9,6 @@
 #python main.py configs/dcgan_exp_0.json
 #python main.py configs/condensenet_exp_0.json
 #python main.py configs/mnist_exp_0.json
-python main.py configs/erfnet_exp_0.json
+# python main.py configs/erfnet_exp_0.json
+
+python main.py configs/hmipt_exp_0.json

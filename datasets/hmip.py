@@ -12,24 +12,34 @@ import os
 import scipy.io as sio
 import numpy as np
 import torchvision.transforms as transforms 
+import csv
 
-class HimpDataset(data.Dataset):
-    def __init__(self, mode, data_root, transform=None):
-        self.data = []# read from file, a list of paths
-        if len(self.data) == 0:
-            raise RuntimeError('Found 0 images, please check the data set')
+class HmiptDataset(data.Dataset):
+    def __init__(self, mode, data_csv, data_root, transform=None):
+        self.data = self._load_csv(data_csv)
         self.mode = mode
         self.data_root = data_root
 
         self.transform = transform
 
+    def _load_csv(self, csv_filepath: str):
+        data = []
+        with open(csv_filepath, 'r') as file:
+            csv_reader = csv.DictReader(file)
+            for row in csv_reader:
+                data.append((row['img_file'], (float(row['x']), float(row['y']))))
+        if len(data) == 0:
+            raise RuntimeError('Found 0 images, please check the data set')
+        return data
+
     def __getitem__(self, index):
-        img_file, x, y = self.data[index]
+        img_file, (x, y) = self.data[index]
         img_path = os.path.join(self.data_root, img_file)
         img = Image.open(img_path).convert('RGB')
         if self.transform is not None:
             img = self.transform(img)
 
+        target = torch.FloatTensor([x, y])
         # Data augmentation
         # if self.sliding_crop is not None:
         #     img_slices, mask_slices, slices_info = self.sliding_crop(img, mask)
@@ -39,7 +49,7 @@ class HimpDataset(data.Dataset):
         #         mask_slices = [self.target_transform(e) for e in mask_slices]
         #     img, mask = torch.stack(img_slices, 0), torch.stack(mask_slices, 0)
         #     return img, mask, torch.LongTensor(slices_info)
-        return img, (x, y)
+        return img, target
 
     def __len__(self):
         return len(self.data)
@@ -77,9 +87,9 @@ class HmipDataLoader:
             self.valid_loader = DataLoader(valid, batch_size=config.batch_size, shuffle=False)
 
         elif self.config.mode == 'train':
-            train_set = HimptDataset('train', self.config.data_root,
+            train_set = HmiptDataset('train', self.config.data_csv, self.config.data_root,
                             transform=self.input_transform)
-            valid_set = HimptDataset('val', self.config.data_root,
+            valid_set = HmiptDataset('val', self.config.data_csv, self.config.data_root,
                             transform=self.input_transform)
 
             self.train_loader = DataLoader(train_set, batch_size=self.config.batch_size, shuffle=True,
@@ -92,7 +102,7 @@ class HmipDataLoader:
             self.valid_iterations = (len(valid_set) + self.config.batch_size) // self.config.batch_size
 
         elif self.config.mode == 'test':
-            test_set = HimptDataset('test', self.config.data_root,
+            test_set = HmiptDataset('test', self.config.data_root,
                            transform=self.input_transform)
 
             self.test_loader = DataLoader(test_set, batch_size=self.config.batch_size, shuffle=False,
