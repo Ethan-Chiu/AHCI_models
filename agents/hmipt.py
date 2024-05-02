@@ -42,7 +42,6 @@ class HimpTAgent(BaseAgent):
         # define optimizers for both generator and discriminator
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.config.learning_rate, momentum=self.config.momentum)
  
-
         # initialize counter
         self.current_epoch = 0
         self.current_iteration = 0
@@ -50,15 +49,13 @@ class HimpTAgent(BaseAgent):
 
         # set cuda flag
         self.is_cuda = torch.cuda.is_available()
-        if self.is_cuda and not self.config.cuda:
-            self.logger.info("WARNING: You have a CUDA device, so you should probably enable CUDA")
-
-        self.cuda = self.is_cuda & self.config.cuda
 
         # set the manual seed for torch
         self.manual_seed = self.config.seed
-        if self.cuda:
-            torch.cuda.manual_seed_all(self.manual_seed)
+        torch.cuda.manual_seed_all(self.manual_seed)
+        torch.manual_seed(self.manual_seed)
+
+        if self.is_cuda:
             self.device = torch.device("cuda")
             torch.cuda.set_device(self.config.gpu_device)
             self.model = self.model.cuda()
@@ -67,7 +64,6 @@ class HimpTAgent(BaseAgent):
             print_cuda_statistics()
         else:
             self.device = torch.device("cpu")
-            torch.manual_seed(self.manual_seed)
             self.logger.info("Program will run on *****CPU*****\n")
 
         # Model Loading from the latest checkpoint if not found start from scratch.
