@@ -3,7 +3,6 @@ An example for dataset loaders, starting with data loading including all the fun
 """
 import imageio
 import torch
-from torch.utils import data
 import torchvision.utils as v_utils
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import PIL
@@ -14,7 +13,7 @@ import numpy as np
 import torchvision.transforms as transforms 
 import csv
 
-class HmiptDataset(data.Dataset):
+class HmiptDataset(Dataset):
     def __init__(self, mode, data_csv, data_root, transform=None):
         self.data = self._load_csv(data_csv)
         self.mode = mode
