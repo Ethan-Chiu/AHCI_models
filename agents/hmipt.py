@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from agents.base import BaseAgent
 
 # import your classes here
-from graphs.models.hmipt import HmipT
+from src.models.hmipt import HmipT
 from datasets.hmip import HmipDataLoader
 
 from tensorboardX import SummaryWriter
