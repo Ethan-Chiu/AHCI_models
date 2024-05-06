@@ -22,6 +22,12 @@ from tensorboardX import SummaryWriter
 from utils.metrics import AverageMeter, AverageMeterList
 from utils.misc import print_cuda_statistics
 
+import multiprocessing as mp
+
+# Set the multiprocessing start method to 'spawn'
+mp.set_start_method('spawn', force=True)
+
+
 cudnn.benchmark = True
 
 

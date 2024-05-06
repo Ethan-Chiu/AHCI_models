@@ -114,3 +114,5 @@ pretrained_weights/*
 # Data
 data/*
 !data/.keep
+!data/slice.py
+!data/hmip/data.csv

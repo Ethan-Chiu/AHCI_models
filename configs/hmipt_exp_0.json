@@ -20,7 +20,8 @@
   "data_loader_workers": 2,
   "pin_memory": false,
 
-  "data_root": "./data/hmip/images/",
+  "mp_data_root": "./data/",
+  "data_root": "./data/frames/",
   "data_csv": "./data/hmip/data.csv",
 
   "num_filters": 5
