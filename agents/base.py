@@ -2,6 +2,7 @@
 The Base Agent class, where all other agents inherit from, that contains definitions for all the necessary functions
 """
 import logging
+from logging import Formatter
 
 
 class BaseAgent:
@@ -12,6 +13,14 @@ class BaseAgent:
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger("Agent")
+
+        log_console_format = "[%(levelname)s]: %(message)s"
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(Formatter(log_console_format))
+
+        self.logger.addHandler(console_handler)
+
 
     def load_checkpoint(self, file_name):
         """

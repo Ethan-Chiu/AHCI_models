@@ -1,6 +1,6 @@
 import os
-import random
 import shutil
+import logging
 
 import numpy as np
 from tqdm import tqdm
@@ -35,9 +35,10 @@ class HimpTAgent(BaseAgent):
 
     def __init__(self, config):
         super().__init__(config)
+        self.logger.setLevel(logging.INFO)
 
         # define models
-        self.model = HmipT(config=config) 
+        self.model = HmipT(config=config, logger=self.logger) 
 
         # define data_loader
         self.data_loader = HmipDataLoader(config=config) 
@@ -164,17 +165,17 @@ class HimpTAgent(BaseAgent):
         """
         self.model.train()
         for batch_idx, (data, target) in enumerate(self.data_loader.train_loader):
-            # print("data", data)
-            # print("target", target)
-            data, target = data.to(self.device), target.to(self.device)
+            imgs, poses = data
+
+            imgs, poses, target = imgs.to(self.device), poses.to(self.device), target.to(self.device)
             self.optimizer.zero_grad()
-            output = self.model(data)
+            output = self.model(imgs, poses)
             loss = self.loss(output, target)
             loss.backward()
             self.optimizer.step()
             if batch_idx % self.config.log_interval == 0:
                 self.logger.info('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    self.current_epoch, batch_idx * len(data), len(self.data_loader.train_loader.dataset),
+                    self.current_epoch, batch_idx * len(target), len(self.data_loader.train_loader.dataset),
                            100. * batch_idx / len(self.data_loader.train_loader), loss.item()))
             self.current_iteration += 1
 
@@ -188,9 +189,11 @@ class HimpTAgent(BaseAgent):
         val_loss = 0
         # correct = 0
         with torch.no_grad():
-            for data, target in self.data_loader.valid_loader:
-                data, target = data.to(self.device), target.to(self.device)
-                output = self.model(data)
+            for _, (data, target) in enumerate(self.data_loader.valid_loader):
+                imgs, poses = data
+
+                imgs, poses, target = imgs.to(self.device), poses.to(self.device), target.to(self.device)
+                output = self.model(imgs, poses)
                 val_loss += self.loss(output, target).item()  # sum up batch loss
                 # pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
                 # correct += pred.eq(target.view_as(pred)).sum().item()

@@ -13,12 +13,13 @@ from pathlib import Path
 
 
 class HmiptDataset(Dataset):
-    def __init__(self, mode, data_csv, data_root, mp_data_root, transform=None):
+    def __init__(self, mode, data_csv, data_root, mp_data_root, no_cache, transform=None, **_):
         self.data = self._load_csv(data_csv)
         self.mode = mode
         self.data_root = data_root
         self.mp_data_root = mp_data_root
         self.data_cache_dir = "./data/hmip/cache"
+        self.no_cache = no_cache
         Path(self.data_cache_dir).mkdir(parents=True, exist_ok=True)
 
         self.transform = transform
@@ -71,26 +72,29 @@ class HmiptDataset(Dataset):
             oldest_file = min(files, key=lambda x: os.path.getctime(os.path.join(directory, x)))
             os.remove(os.path.join(directory, oldest_file))
         # Save your array
-        np.save(os.path.join(directory, filename), proto.cpu())
+        np.save(os.path.join(directory, filename), proto)
 
 
     def __getitem__(self, index):
         
         img_paths, mp_paths, detector = self.data[index]
 
-        mp = []
+        poses = []
         for mp_path in mp_paths:
             mp_filepath = os.path.join(self.mp_data_root, mp_path)
-            mp.append(np.load(mp_filepath))
+            mp = np.load(mp_filepath)
+            mp: np.ndarray = mp['arr_0']
+            mp = mp.astype(np.float32)
+            poses.append(mp)
 
         imgs = []
         for img_path in img_paths:
-            cache_name = img_path.replace("/", "_").replace(".jpg", "") + ".npy"
-            cache_proto = os.path.join(self.data_cache_dir, cache_name)
-            if os.path.exists(cache_proto):
-                proto = np.load(cache_proto)
-                imgs.append(proto)
-                continue
+            # cache_name = img_path.replace("/", "_").replace(".jpg", "") + ".npy"
+            # cache_proto = os.path.join(self.data_cache_dir, cache_name)
+            # if os.path.exists(cache_proto) and not self.no_cache:
+            #     proto = np.load(cache_proto)
+            #     imgs.append(proto)
+            #     continue
             
             img_filepath = os.path.join(self.data_root, img_path)
             img = Image.open(img_filepath).convert("RGB")
@@ -101,14 +105,19 @@ class HmiptDataset(Dataset):
             img = img / 255
             img = img.unsqueeze(0).cuda()
             _, proto = self.yolo(img)[:2]
-            proto = proto[-1]
-            # print(proto.shape)
-            pooled_proto = self.pooling_layer(proto)
-            self._save_proto(pooled_proto, cache_name)
-            
-            imgs.append(proto)
+            proto: np.ndarray = proto[-1]
+            pooled_proto: np.ndarray = self.pooling_layer(proto)
+            # to host memory
+            pooled_proto = pooled_proto.squeeze().cpu()
+            # self._save_proto(pooled_proto, cache_name)
+            imgs.append(pooled_proto)
+            # print("proto", pooled_proto.shape) 32, 60, 48
+        
+        poses = np.array(poses)
+        imgs = np.array(imgs)
+        detector = np.array(detector).astype(np.float32)
 
-        return (imgs, mp), detector
+        return (imgs, poses), detector
 
     def __len__(self):
         return len(self.data)
@@ -168,6 +177,7 @@ class HmipDataLoader:
                 self.config.data_root,
                 mp_data_root=self.config.mp_data_root,
                 transform=self.input_transform,
+                no_cache=self.config.no_cache,
             )
             valid_set = HmiptDataset(
                 "val",
@@ -175,6 +185,7 @@ class HmipDataLoader:
                 self.config.data_root,
                 mp_data_root=self.config.mp_data_root,
                 transform=self.input_transform,
+                no_cache=self.config.no_cache,
             )
 
             self.train_loader = DataLoader(
