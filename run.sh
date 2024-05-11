@@ -11,4 +11,5 @@
 #python main.py configs/mnist_exp_0.json
 # python main.py configs/erfnet_exp_0.json
 
-python main.py configs/hmipt_exp_0.json
+cd hmipt
+python main.py configs/hmipt_exp_test.json

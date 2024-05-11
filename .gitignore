@@ -103,16 +103,15 @@ ENV/
 # Pycharm
 .idea/
 
+# Hmipt
 # Experiments
-experiments/*
-!experiments/.keep
+hmipt/experiments/*
+!hmipt/experiments/.keep
 
 # Pretrained Weights
-pretrained_weights/*
-!pretrained_weights/.keep
+hmipt/pretrained_weights/*
+!hmipt/pretrained_weights/.keep
 
 # Data
-data/*
-!data/.keep
-!data/slice.py
-!data/hmip/data.csv
+hmipt/data/*
+!hmipt/data/hmip
