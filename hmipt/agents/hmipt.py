@@ -144,13 +144,13 @@ class HimpTAgent(BaseAgent):
             self.current_epoch = epoch
             print(f"Epoch {epoch}/{self.config.max_epoch}")
             self.train_one_epoch()
-            loss = self.validate()
+            # loss = self.validate()
 
-            is_best = loss < self.best_metric
-            if is_best:
-                self.best_metric = loss
+            # is_best = loss < self.best_metric
+            # if is_best:
+            #     self.best_metric = loss
 
-            self.save_checkpoint(f"checkpoint_{epoch}.pth.tar", is_best=is_best)
+            self.save_checkpoint(f"checkpoint_{epoch}.pth.tar", is_best=False)
 
     def train_one_epoch(self):
         """
@@ -159,11 +159,11 @@ class HimpTAgent(BaseAgent):
         """
         self.model.train()
         for batch_idx, (data, target) in enumerate(self.data_loader.train_loader):
-            imgs, poses = data
+            imgs, poses, heads = data
 
-            imgs, poses, target = imgs.to(self.device), poses.to(self.device), target.to(self.device)
+            imgs, poses, heads, target = imgs.to(self.device), poses.to(self.device), heads.to(self.device), target.to(self.device)
             self.optimizer.zero_grad()
-            output = self.model(imgs, poses)
+            output = self.model(imgs, poses, heads)
             loss = self.loss(output, target)
             loss.backward()
             self.optimizer.step()
@@ -184,10 +184,10 @@ class HimpTAgent(BaseAgent):
         # correct = 0
         with torch.no_grad():
             for _, (data, target) in enumerate(self.data_loader.valid_loader):
-                imgs, poses = data
+                imgs, poses, heads = data
 
-                imgs, poses, target = imgs.to(self.device), poses.to(self.device), target.to(self.device)
-                output = self.model(imgs, poses)
+                imgs, poses, heads, target = imgs.to(self.device), poses.to(self.device), heads.to(self.device), target.to(self.device)
+                output = self.model(imgs, poses, heads)
                 val_loss += self.loss(output, target).item()  # sum up batch loss
                 # pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
                 # correct += pred.eq(target.view_as(pred)).sum().item()

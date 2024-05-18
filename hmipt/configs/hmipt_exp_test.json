@@ -21,7 +21,7 @@
   "pin_memory": false,
 
   "mp_data_root": "./data/",
-  "data_root": "./data/frames/",
+  "data_root": "./data/",
   "data_csv": "./data/hmip/data.csv",
   "no_cache": false,
 

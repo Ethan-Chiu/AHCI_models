@@ -13,7 +13,9 @@ from pathlib import Path
 
 
 class HmiptDataset(Dataset):
-    def __init__(self, mode, data_csv, data_root, mp_data_root, no_cache, transform=None, **_):
+    def __init__(
+        self, mode, data_csv, data_root, mp_data_root, no_cache, transform=None, **_
+    ):
         self.data = self._load_csv(data_csv)
         self.mode = mode
         self.data_root = data_root
@@ -32,7 +34,6 @@ class HmiptDataset(Dataset):
         self.yolo.warmup(imgsz=(1, 3, 640, 640))
         self.pooling_layer = nn.AvgPool2d(kernel_size=2).cuda()
 
-
     def _load_csv(self, csv_filepath: str):
         data = []
         with open(csv_filepath, "r") as file:
@@ -41,6 +42,15 @@ class HmiptDataset(Dataset):
                 detector_str = row["detector"]
                 detector = detector_str.split(" ")
                 detector = [float(d) for d in detector]
+                heads = [
+                    row["head_1"],
+                    row["head_2"],
+                    row["head_3"],
+                    row["head_4"],
+                    row["head_5"],
+                ]
+                heads = [h.split(" ") for h in heads]
+                heads = [[float(d) for d in h] for h in heads]
                 data.append(
                     (
                         [
@@ -57,45 +67,40 @@ class HmiptDataset(Dataset):
                             row["mp_path_4"],
                             row["mp_path_5"],
                         ],
+                        heads,
                         detector,
                     )
                 )
         if len(data) == 0:
             raise RuntimeError("Found 0 images, please check the data set")
         return data
-    
 
     def _save_proto(self, proto, filename):
         directory = self.data_cache_dir
         files = os.listdir(directory)
         if len(files) >= 20:
-            oldest_file = min(files, key=lambda x: os.path.getctime(os.path.join(directory, x)))
+            oldest_file = min(
+                files, key=lambda x: os.path.getctime(os.path.join(directory, x))
+            )
             os.remove(os.path.join(directory, oldest_file))
         # Save your array
         np.save(os.path.join(directory, filename), proto)
 
-
     def __getitem__(self, index):
-        
-        img_paths, mp_paths, detector = self.data[index]
+
+        img_paths, mp_paths, heads, detector = self.data[index]
 
         poses = []
         for mp_path in mp_paths:
             mp_filepath = os.path.join(self.mp_data_root, mp_path)
             mp = np.load(mp_filepath)
-            mp: np.ndarray = mp['arr_0']
+            mp: np.ndarray = mp["arr_0"]
             mp = mp.astype(np.float32)
             poses.append(mp)
 
-        imgs = []
+        imgs_input = []
         for img_path in img_paths:
-            # cache_name = img_path.replace("/", "_").replace(".jpg", "") + ".npy"
-            # cache_proto = os.path.join(self.data_cache_dir, cache_name)
-            # if os.path.exists(cache_proto) and not self.no_cache:
-            #     proto = np.load(cache_proto)
-            #     imgs.append(proto)
-            #     continue
-            
+
             img_filepath = os.path.join(self.data_root, img_path)
             img = Image.open(img_filepath).convert("RGB")
 
@@ -103,21 +108,24 @@ class HmiptDataset(Dataset):
                 img = self.transform(img)
 
             img = img / 255
-            img = img.unsqueeze(0).cuda()
-            _, proto = self.yolo(img)[:2]
-            proto: np.ndarray = proto[-1]
-            pooled_proto: np.ndarray = self.pooling_layer(proto)
-            # to host memory
-            pooled_proto = pooled_proto.squeeze().cpu()
-            # self._save_proto(pooled_proto, cache_name)
-            imgs.append(pooled_proto)
-            # print("proto", pooled_proto.shape) 32, 60, 48
+            imgs_input.append(img)
         
+        imgs_input = torch.tensor(np.array(imgs_input)).cuda()
+
+        _, proto = self.yolo(imgs_input)[:2]
+        proto: np.ndarray = proto[-1]
+        pooled_proto: np.ndarray = self.pooling_layer(proto)
+        # to host memory
+        pooled_proto = pooled_proto.squeeze().cpu()
+           
+        # print("proto", pooled_proto.shape) # 32, 60, 48
+
         poses = np.array(poses)
-        imgs = np.array(imgs)
+        imgs = np.array(pooled_proto)
+        heads = np.array(heads).astype(np.float32)
         detector = np.array(detector).astype(np.float32)
 
-        return (imgs, poses), detector
+        return (imgs, poses, heads), detector
 
     def __len__(self):
         return len(self.data)

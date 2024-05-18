@@ -1,11 +1,6 @@
 import cv2
 import os
-import sys
 
-# label = sys.argv[1]
-# index = sys.argv[2]
-labels = "bottle cup mouse keyboard phone".split()
-names = ["test", *range(1, 11)]
 
 def slice_avi_to_frames(input_file, output_folder):
     if not os.path.exists(output_folder):
@@ -22,12 +17,32 @@ def slice_avi_to_frames(input_file, output_folder):
     cap.release()
     print(f"Total {frame_count} frames extracted.")
 
-for label in labels:
-    for name in names:
-        try:
-            input_file = f"../../video/{label}/{label}_{name}.avi"
-            output_folder = f"../../frames/{label}/{name}"
-            slice_avi_to_frames(input_file, output_folder)
-        except Exception as e:
-            # print(e)
-            pass
+
+def find_avi_files(directory):
+    avi_files = []
+    # Walk through the directory
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.avi'):
+                # Create the relative path
+                relative_path = os.path.relpath(os.path.join(root, file), directory)
+                avi_files.append(relative_path)
+    return avi_files
+
+
+process_dir = "../../video/"
+
+videos = find_avi_files(process_dir)
+print(videos)
+
+output_dir = "../../frames/"
+
+for v in videos:
+    try:
+        input_file = os.path.join(process_dir, v)
+        output_folder = os.path.dirname(os.path.join(output_dir, v))
+        print(output_folder)
+        slice_avi_to_frames(input_file, output_folder)
+    except Exception as e:
+        print(e)
+        pass
