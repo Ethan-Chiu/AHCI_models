@@ -31,7 +31,8 @@ def main():
     agent_class = globals()[config.agent]
     agent = agent_class(config)
     agent.run()
-    agent.finalize()
+    if config.mode == "train":
+        agent.finalize()
 
 
 if __name__ == '__main__':

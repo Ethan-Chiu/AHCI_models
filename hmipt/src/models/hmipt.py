@@ -13,7 +13,7 @@ class HmipT(nn.Module):
         self.logger = logger
 
         # define layers 
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU()
 
         # Image       
         self.img_conv = nn.Conv2d(in_channels=5*32, out_channels=self.config.conv1_out, kernel_size=3, stride=2, padding=1)
@@ -37,10 +37,14 @@ class HmipT(nn.Module):
         self.join_linear_2 = nn.Linear(128, 64)
 
         # Motion
-        transformer_layer = nn.TransformerEncoderLayer(d_model=64, nhead=4)
-        self.motion_encoder = nn.TransformerEncoder(transformer_layer, num_layers=2)
+        transformer_layer = nn.TransformerEncoderLayer(d_model=64, nhead=2)
+        self.motion_encoder = nn.TransformerEncoder(transformer_layer, num_layers=1)
 
-        self.attention = nn.MultiheadAttention(64, 2, batch_first=True)
+        # Cross attention
+        self.attention_1 = nn.MultiheadAttention(64, 2, batch_first=True)
+        self.norm_1 = nn.LayerNorm(64)
+        self.attention_2 = nn.MultiheadAttention(64, 2, batch_first=True)
+        self.norm_2 = nn.LayerNorm(64)
 
         # Detector
         self.mask_linear_1 = nn.Linear(5 * 64, 128)
@@ -57,7 +61,7 @@ class HmipT(nn.Module):
         # Image
         concat_imgs = imgs.view(bs, -1, width, height)
         imgs = self.img_conv(concat_imgs)
-        self.logger.debug(f"reduced {imgs.shape}") # 1, 64, 30, 24
+        self.logger.debug(f"reduced {imgs.shape}") # 1, 64, w/2, h/2
 
         img_features = imgs.view(*imgs.shape[0:2], -1).permute(0, 2, 1)
         self.logger.debug(f"image feature: {img_features.shape}") # 1, 720, 64
@@ -100,11 +104,17 @@ class HmipT(nn.Module):
         motion_feature: np.ndarray = self.motion_encoder(join_pose)
         self.logger.debug(f"motion feature {motion_feature.shape}") # 1, 5, 64
 
-        mask_detector_features, _ = self.attention(motion_feature, img_features, img_features, need_weights=False)
-        self.logger.debug(f"mask detector feature: {mask_detector_features.shape}") # 1, 5, 64
+        # Cross attention
+        dtc_feat, _ = self.attention_1(motion_feature, img_features, img_features, need_weights=False)
+        dtc_q = self.norm_1(dtc_feat + motion_feature)
 
-        mask_detector_features = mask_detector_features.reshape(bs, -1) # 1, 320
-        detector = self.mask_linear_1(mask_detector_features)
+        # detector_feat, _ = self.attention_2(dtc_q, img_features, img_features, need_weights=False)
+        # detector_feat = self.norm_2(detector_feat + dtc_q)
+        detector_feat = dtc_q
+        self.logger.debug(f"mask detector feature: {detector_feat.shape}") # 1, 5, 64
+
+        detector_feat = detector_feat.reshape(bs, -1) # 1, 320
+        detector = self.mask_linear_1(detector_feat)
         detector = self.relu(detector)
         detector = self.mask_linear_2(detector) 
         self.logger.debug(f"detector: {detector.shape}") # 1, 32

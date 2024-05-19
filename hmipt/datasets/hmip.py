@@ -1,16 +1,14 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset, Dataset
+from torch.utils.data import DataLoader, Dataset
 import PIL
 from PIL import Image
 import os
-import scipy.io as sio
 import numpy as np
 import torchvision.transforms as transforms
 import csv
-from hmipt.src.models.yolov9.models.common import DetectMultiBackend
 from pathlib import Path
-
+from hmipt.src.models.yolov9.utils.augmentations import letterbox
 
 class HmiptDataset(Dataset):
     def __init__(
@@ -20,19 +18,13 @@ class HmiptDataset(Dataset):
         self.mode = mode
         self.data_root = data_root
         self.mp_data_root = mp_data_root
+
         self.data_cache_dir = "./data/hmip/cache"
         self.no_cache = no_cache
         Path(self.data_cache_dir).mkdir(parents=True, exist_ok=True)
 
         self.transform = transform
 
-        weights_path = "./pretrained_weights/gelan-c-seg.pt"
-        self.yolo = DetectMultiBackend(
-            weights_path, data="./src/models/yolov9/data/coco.yaml", fp16=False
-        )
-        # TODO: check if cuda is available
-        self.yolo.warmup(imgsz=(1, 3, 640, 640))
-        self.pooling_layer = nn.AvgPool2d(kernel_size=2).cuda()
 
     def _load_csv(self, csv_filepath: str):
         data = []
@@ -75,21 +67,12 @@ class HmiptDataset(Dataset):
             raise RuntimeError("Found 0 images, please check the data set")
         return data
 
-    def _save_proto(self, proto, filename):
-        directory = self.data_cache_dir
-        files = os.listdir(directory)
-        if len(files) >= 20:
-            oldest_file = min(
-                files, key=lambda x: os.path.getctime(os.path.join(directory, x))
-            )
-            os.remove(os.path.join(directory, oldest_file))
-        # Save your array
-        np.save(os.path.join(directory, filename), proto)
 
     def __getitem__(self, index):
 
         img_paths, mp_paths, heads, detector = self.data[index]
 
+        # Hand-Pose
         poses = []
         for mp_path in mp_paths:
             mp_filepath = os.path.join(self.mp_data_root, mp_path)
@@ -98,34 +81,33 @@ class HmiptDataset(Dataset):
             mp = mp.astype(np.float32)
             poses.append(mp)
 
+        # Image
         imgs_input = []
         for img_path in img_paths:
-
             img_filepath = os.path.join(self.data_root, img_path)
-            img = Image.open(img_filepath).convert("RGB")
+            img = np.array(Image.open(img_filepath))
+            # Image preprocess
+            imgsz = (480, 480)
+            im = letterbox(img, imgsz)[0]
+            im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+            im = np.ascontiguousarray(im)
+            im = torch.from_numpy(im) # TODO: check device .cuda()
+            im = im.float()
+            # if self.transform is not None:
+            #     img = self.transform(img)
 
-            if self.transform is not None:
-                img = self.transform(img)
+            im /= 255
+            imgs_input.append(im)
 
-            img = img / 255
-            imgs_input.append(img)
-        
-        imgs_input = torch.tensor(np.array(imgs_input)).cuda()
-
-        _, proto = self.yolo(imgs_input)[:2]
-        proto: np.ndarray = proto[-1]
-        pooled_proto: np.ndarray = self.pooling_layer(proto)
-        # to host memory
-        pooled_proto = pooled_proto.squeeze().cpu()
-           
-        # print("proto", pooled_proto.shape) # 32, 60, 48
-
+        # To np array 
+        imgs = np.array(imgs_input)
         poses = np.array(poses)
-        imgs = np.array(pooled_proto)
         heads = np.array(heads).astype(np.float32)
         detector = np.array(detector).astype(np.float32)
 
+        # return (img_paths, imgs, poses, heads), detector
         return (imgs, poses, heads), detector
+
 
     def __len__(self):
         return len(self.data)
@@ -134,7 +116,7 @@ class HmiptDataset(Dataset):
 class HmipDataLoader:
     def __init__(self, config):
         self.config = config
-        assert self.config.mode in ["train", "test", "random"]
+        assert self.config.mode in ["train", "test"]
 
         mean_std = ([128.0, 128.0, 128.0], [1.0, 1.0, 1.0])
 
@@ -146,39 +128,7 @@ class HmipDataLoader:
             ]
         )
 
-        if self.config.mode == "random":
-            train_data = torch.randn(
-                self.config.batch_size,
-                self.config.input_channels,
-                self.config.img_size,
-                self.config.img_size,
-            )
-            train_labels = torch.ones(
-                self.config.batch_size, self.config.img_size, self.config.img_size
-            ).long()
-            valid_data = train_data
-            valid_labels = train_labels
-            self.len_train_data = train_data.size()[0]
-            self.len_valid_data = valid_data.size()[0]
-
-            self.train_iterations = (
-                self.len_train_data + self.config.batch_size - 1
-            ) // self.config.batch_size
-            self.valid_iterations = (
-                self.len_valid_data + self.config.batch_size - 1
-            ) // self.config.batch_size
-
-            train = TensorDataset(train_data, train_labels)
-            valid = TensorDataset(valid_data, valid_labels)
-
-            self.train_loader = DataLoader(
-                train, batch_size=config.batch_size, shuffle=True
-            )
-            self.valid_loader = DataLoader(
-                valid, batch_size=config.batch_size, shuffle=False
-            )
-
-        elif self.config.mode == "train":
+        if self.config.mode == "train":
             train_set = HmiptDataset(
                 "train",
                 self.config.data_csv,
@@ -219,7 +169,12 @@ class HmipDataLoader:
 
         elif self.config.mode == "test":
             test_set = HmiptDataset(
-                "test", self.config.data_root, transform=self.input_transform
+                "test",
+                self.config.data_csv,
+                self.config.data_root,
+                mp_data_root=self.config.mp_data_root,
+                transform=self.input_transform,
+                no_cache=self.config.no_cache,
             )
 
             self.test_loader = DataLoader(
@@ -229,6 +184,7 @@ class HmipDataLoader:
                 num_workers=self.config.data_loader_workers,
                 pin_memory=self.config.pin_memory,
             )
+            
             self.test_iterations = (
                 len(test_set) + self.config.batch_size
             ) // self.config.batch_size
