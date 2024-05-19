@@ -1,1 +1,1 @@
-wget https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c-seg.pt -P ./pretrained_weights/
+wget https://github.com/WongKinYiu/yolov9/releases/download/v0.1/gelan-c-seg.pt -P ./hmipt/pretrained_weights/
